@@ -11,6 +11,14 @@ BOARD_TOP = 30
 BOARD_RIGHT = BOARD_LEFT + BOARD_COLUMNS * CELL_SIZE
 BOARD_BOTTOM = BOARD_TOP + BOARD_ROWS * CELL_SIZE
 GRAVITY_TIMER_ID = 1
+HORIZONTAL_TIMER_ID = 2
+SOFT_DROP_TIMER_ID = 3
+HORIZONTAL_DELAY = 150
+HORIZONTAL_INTERVAL = 40
+SOFT_DROP_INTERVAL = 30
+LEFT_HELD = 1
+RIGHT_HELD = 2
+DOWN_HELD = 4
 LINES_PER_LEVEL = 10
 MAX_LEVEL = 10
 
@@ -61,6 +69,8 @@ section '.data' data readable writeable
     score dd 0
     clearedLines dd 0
     level dd 1
+    heldKeys dd 0
+    horizontalDirection dd 0
     gravityIntervals dd 1000, 793, 618, 473, 355, 262, 190, 135, 94, 64
     lineScores dd 0, 100, 300, 500, 800
     countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 13, 10, 13, 10, 'LEVEL', 0
@@ -106,6 +116,10 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .paint
     cmp [uMsg], WM_KEYDOWN
     je .keyDown
+    cmp [uMsg], WM_KEYUP
+    je .keyUp
+    cmp [uMsg], WM_KILLFOCUS
+    je .loseFocus
     cmp [uMsg], WM_TIMER
     je .timer
     cmp [uMsg], WM_DESTROY
@@ -136,10 +150,36 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     cmp [gameOver], 0
     jne .keyHandled
     cmp [wParam], GRAVITY_TIMER_ID
-    je .moveDown
+    je .gravity
+    cmp [wParam], HORIZONTAL_TIMER_ID
+    je .horizontalRepeat
+    cmp [wParam], SOFT_DROP_TIMER_ID
+    je .softDropRepeat
     jmp .default
 
+.gravity:
+    test [heldKeys], DOWN_HELD
+    jnz .keyHandled
+    jmp .moveDown
+
+.horizontalRepeat:
+    cmp [horizontalDirection], 0
+    je .keyHandled
+    invoke SetTimer, [hwnd], HORIZONTAL_TIMER_ID, HORIZONTAL_INTERVAL, 0
+    test eax, eax
+    jz .timerFailed
+    cmp [horizontalDirection], VK_LEFT
+    je .moveLeft
+    jmp .moveRight
+
+.softDropRepeat:
+    test [heldKeys], DOWN_HELD
+    jz .keyHandled
+    jmp .moveDown
+
 .keyDown:
+    test [lParam], 40000000h
+    jnz .keyHandled
     cmp [gameOver], 0
     je .playingKeys
     cmp [wParam], 'R'
@@ -149,6 +189,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
     test eax, eax
     jz .keyHandled
+    stdcall ResetInput, [hwnd]
     mov ecx, BOARD_COLUMNS * BOARD_ROWS
 .clearBoard:
     mov byte [board + ecx - 1], 0
@@ -163,14 +204,68 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
 .playingKeys:
     cmp [wParam], VK_LEFT
-    je .moveLeft
+    je .pressLeft
     cmp [wParam], VK_RIGHT
-    je .moveRight
+    je .pressRight
     cmp [wParam], VK_DOWN
-    je .moveDown
+    je .pressDown
     cmp [wParam], VK_UP
     je .rotate
     jmp .default
+
+.pressLeft:
+    or [heldKeys], LEFT_HELD
+    stdcall StartHorizontalRepeat, [hwnd], VK_LEFT
+    jmp .moveLeft
+
+.pressRight:
+    or [heldKeys], RIGHT_HELD
+    stdcall StartHorizontalRepeat, [hwnd], VK_RIGHT
+    jmp .moveRight
+
+.pressDown:
+    or [heldKeys], DOWN_HELD
+    invoke SetTimer, [hwnd], SOFT_DROP_TIMER_ID, SOFT_DROP_INTERVAL, 0
+    test eax, eax
+    jz .timerFailed
+    jmp .moveDown
+
+.keyUp:
+    cmp [wParam], VK_LEFT
+    je .releaseLeft
+    cmp [wParam], VK_RIGHT
+    je .releaseRight
+    cmp [wParam], VK_DOWN
+    jne .default
+    and [heldKeys], not DOWN_HELD
+    invoke KillTimer, [hwnd], SOFT_DROP_TIMER_ID
+    jmp .keyHandled
+
+.releaseLeft:
+    and [heldKeys], not LEFT_HELD
+    cmp [horizontalDirection], VK_LEFT
+    jne .keyHandled
+    test [heldKeys], RIGHT_HELD
+    jnz .pressRight
+    jmp .stopHorizontal
+
+.releaseRight:
+    and [heldKeys], not RIGHT_HELD
+    cmp [horizontalDirection], VK_RIGHT
+    jne .keyHandled
+    test [heldKeys], LEFT_HELD
+    jnz .pressLeft
+.stopHorizontal:
+    mov [horizontalDirection], 0
+    invoke KillTimer, [hwnd], HORIZONTAL_TIMER_ID
+    jmp .keyHandled
+
+.loseFocus:
+    stdcall ResetInput, [hwnd]
+    jmp .keyHandled
+
+.timerFailed:
+    invoke ExitProcess, 1
 
 .rotate:
     test [lParam], 40000000h
@@ -236,6 +331,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jnz .redraw
     mov [gameOver], 1
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
+    stdcall ResetInput, [hwnd]
 
 .redraw:
     invoke InvalidateRect, [hwnd], 0, 0
@@ -391,9 +487,29 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     ret
 
 .destroy:
+    stdcall ResetInput, [hwnd]
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
     xor eax, eax
+    ret
+endp
+
+proc StartHorizontalRepeat hwnd, direction
+    mov eax, [direction]
+    mov [horizontalDirection], eax
+    invoke SetTimer, [hwnd], HORIZONTAL_TIMER_ID, HORIZONTAL_DELAY, 0
+    test eax, eax
+    jnz .done
+    invoke ExitProcess, 1
+.done:
+    ret
+endp
+
+proc ResetInput hwnd
+    mov [heldKeys], 0
+    mov [horizontalDirection], 0
+    invoke KillTimer, [hwnd], HORIZONTAL_TIMER_ID
+    invoke KillTimer, [hwnd], SOFT_DROP_TIMER_ID
     ret
 endp
 
