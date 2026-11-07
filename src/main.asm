@@ -10,6 +10,8 @@ BOARD_LEFT = 30
 BOARD_TOP = 30
 BOARD_RIGHT = BOARD_LEFT + BOARD_COLUMNS * CELL_SIZE
 BOARD_BOTTOM = BOARD_TOP + BOARD_ROWS * CELL_SIZE
+GRAVITY_TIMER_ID = 1
+GRAVITY_INTERVAL = 700
 
 section '.data' data readable writeable
     windowTitle db 'TinyTetris', 0
@@ -52,15 +54,35 @@ start:
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, previousPen:DWORD
 
+    cmp [uMsg], WM_CREATE
+    je .create
     cmp [uMsg], WM_PAINT
     je .paint
     cmp [uMsg], WM_KEYDOWN
     je .keyDown
+    cmp [uMsg], WM_TIMER
+    je .timer
     cmp [uMsg], WM_DESTROY
     je .destroy
 .default:
     invoke DefWindowProc, [hwnd], [uMsg], [wParam], [lParam]
     ret
+
+.create:
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
+    test eax, eax
+    jz .createFailed
+    xor eax, eax
+    ret
+
+.createFailed:
+    mov eax, -1
+    ret
+
+.timer:
+    cmp [wParam], GRAVITY_TIMER_ID
+    je .moveDown
+    jmp .default
 
 .keyDown:
     cmp [wParam], VK_LEFT
@@ -159,6 +181,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     ret
 
 .destroy:
+    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
     xor eax, eax
     ret
@@ -168,5 +191,5 @@ section '.idata' import data readable writeable
     library kernel32, 'KERNEL32.DLL', user32, 'USER32.DLL', gdi32, 'GDI32.DLL'
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA'
-    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect'
+    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer'
     import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo'
