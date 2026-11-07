@@ -131,6 +131,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     mov byte [board + eax + 1], 1
     mov byte [board + eax + BOARD_COLUMNS], 1
     mov byte [board + eax + BOARD_COLUMNS + 1], 1
+    stdcall ClearCompletedLines
     mov [pieceX], 4
     mov [pieceY], 0
     stdcall CanPlacePiece, [pieceX], [pieceY]
@@ -241,6 +242,42 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
     xor eax, eax
+    ret
+endp
+
+proc ClearCompletedLines uses ebx esi edi
+    mov ebx, (BOARD_ROWS - 1) * BOARD_COLUMNS
+.checkRow:
+    lea esi, [board + ebx]
+    mov ecx, BOARD_COLUMNS
+.checkCell:
+    cmp byte [esi], 0
+    je .previousRow
+    inc esi
+    loop .checkCell
+
+    mov ecx, ebx
+    test ecx, ecx
+    jz .clearTopRow
+    lea esi, [board + ebx - 1]
+    lea edi, [esi + BOARD_COLUMNS]
+.shiftCells:
+    mov al, [esi]
+    mov [edi], al
+    dec esi
+    dec edi
+    loop .shiftCells
+
+.clearTopRow:
+    mov ecx, BOARD_COLUMNS
+.clearCell:
+    mov byte [board + ecx - 1], 0
+    loop .clearCell
+    jmp .checkRow
+
+.previousRow:
+    sub ebx, BOARD_COLUMNS
+    jns .checkRow
     ret
 endp
 
