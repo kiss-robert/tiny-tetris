@@ -57,6 +57,11 @@ section '.data' data readable writeable
     pieceColors dd 0, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
     board db BOARD_COLUMNS * BOARD_ROWS dup (0)
     gameOver dd 0
+    score dd 0
+    clearedLines dd 0
+    lineScores dd 0, 100, 300, 500, 800
+    countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 0
+    countersFormat db '%u', 13, 10, 13, 10, '%u', 0
     gameOverText db 'GAME OVER', 0
     restartText db 'Press R to restart', 0
 
@@ -90,7 +95,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, countersText[64]:BYTE
 
     cmp [uMsg], WM_CREATE
     je .create
@@ -145,6 +150,8 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .clearBoard:
     mov byte [board + ecx - 1], 0
     loop .clearBoard
+    mov [score], 0
+    mov [clearedLines], 0
     mov [bagIndex], 7
     stdcall SpawnPiece
     mov [gameOver], 0
@@ -209,6 +216,9 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     add esi, 2
     loop .lockCell
     stdcall ClearCompletedLines
+    add [clearedLines], eax
+    mov eax, [lineScores + eax * 4]
+    add [score], eax
     stdcall SpawnPiece
     stdcall CanPlacePiece, [pieceX], [pieceY]
     test eax, eax
@@ -333,8 +343,6 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
     invoke SelectObject, ebx, [previousPen]
     invoke DeleteObject, esi
-    cmp [gameOver], 0
-    je .finishPaint
     invoke GetStockObject, DEFAULT_GUI_FONT
     invoke SelectObject, ebx, eax
     mov [previousFont], eax
@@ -345,13 +353,25 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     sub eax, 12
     mov [textRect.right], eax
     mov [textRect.top], BOARD_TOP
-    mov [textRect.bottom], BOARD_TOP + 40
+    mov [textRect.bottom], BOARD_TOP + 160
+    lea eax, [textRect]
+    invoke DrawText, ebx, countersLabels, -1, eax, DT_LEFT or DT_NOPREFIX
+    lea eax, [countersText]
+    cinvoke wsprintf, eax, countersFormat, [score], [clearedLines]
+    lea eax, [textRect]
+    lea edx, [countersText]
+    invoke DrawText, ebx, edx, -1, eax, DT_RIGHT or DT_NOPREFIX
+    cmp [gameOver], 0
+    je .restoreFont
+    mov [textRect.top], BOARD_TOP + 190
+    mov [textRect.bottom], BOARD_TOP + 230
     lea eax, [textRect]
     invoke DrawText, ebx, gameOverText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
-    mov [textRect.top], BOARD_TOP + 48
-    mov [textRect.bottom], BOARD_TOP + 120
+    mov [textRect.top], BOARD_TOP + 238
+    mov [textRect.bottom], BOARD_TOP + 310
     lea eax, [textRect]
     invoke DrawText, ebx, restartText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
+.restoreFont:
     invoke SelectObject, ebx, [previousFont]
 .finishPaint:
     lea eax, [paint]
@@ -367,6 +387,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 endp
 
 proc ClearCompletedLines uses ebx esi edi
+    xor edx, edx
     mov ebx, (BOARD_ROWS - 1) * BOARD_COLUMNS
 .checkRow:
     lea esi, [board + ebx]
@@ -377,6 +398,7 @@ proc ClearCompletedLines uses ebx esi edi
     inc esi
     loop .checkCell
 
+    inc edx
     mov ecx, ebx
     test ecx, ecx
     jz .clearTopRow
@@ -399,6 +421,7 @@ proc ClearCompletedLines uses ebx esi edi
 .previousRow:
     sub ebx, BOARD_COLUMNS
     jns .checkRow
+    mov eax, edx
     ret
 endp
 
@@ -525,5 +548,5 @@ section '.idata' import data readable writeable
     library kernel32, 'KERNEL32.DLL', user32, 'USER32.DLL', gdi32, 'GDI32.DLL'
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA', GetTickCount, 'GetTickCount'
-    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA'
+    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA', wsprintf, 'wsprintfA'
     import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor'
