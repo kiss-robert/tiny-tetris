@@ -11,7 +11,8 @@ BOARD_TOP = 30
 BOARD_RIGHT = BOARD_LEFT + BOARD_COLUMNS * CELL_SIZE
 BOARD_BOTTOM = BOARD_TOP + BOARD_ROWS * CELL_SIZE
 GRAVITY_TIMER_ID = 1
-GRAVITY_INTERVAL = 700
+LINES_PER_LEVEL = 10
+MAX_LEVEL = 10
 
 section '.data' data readable writeable
     windowTitle db 'TinyTetris', 0
@@ -59,9 +60,11 @@ section '.data' data readable writeable
     gameOver dd 0
     score dd 0
     clearedLines dd 0
+    level dd 1
+    gravityIntervals dd 700, 600, 500, 400, 320, 250, 190, 140, 100, 70
     lineScores dd 0, 100, 300, 500, 800
-    countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 0
-    countersFormat db '%u', 13, 10, 13, 10, '%u', 0
+    countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 13, 10, 13, 10, 'LEVEL', 0
+    countersFormat db '%u', 13, 10, 13, 10, '%u', 13, 10, 13, 10, '%u', 0
     gameOverText db 'GAME OVER', 0
     restartText db 'Press R to restart', 0
 
@@ -119,7 +122,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .seedReady:
     mov [randomState], eax
     stdcall SpawnPiece
-    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
     test eax, eax
     jz .createFailed
     xor eax, eax
@@ -143,7 +146,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jne .keyHandled
     test [lParam], 40000000h
     jnz .keyHandled
-    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
     test eax, eax
     jz .keyHandled
     mov ecx, BOARD_COLUMNS * BOARD_ROWS
@@ -152,6 +155,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     loop .clearBoard
     mov [score], 0
     mov [clearedLines], 0
+    mov [level], 1
     mov [bagIndex], 7
     stdcall SpawnPiece
     mov [gameOver], 0
@@ -216,9 +220,16 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     add esi, 2
     loop .lockCell
     stdcall ClearCompletedLines
-    add [clearedLines], eax
-    mov eax, [lineScores + eax * 4]
-    add [score], eax
+    stdcall UpdateProgress, eax
+    test eax, eax
+    jz .spawnNext
+    mov eax, [level]
+    dec eax
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals + eax * 4], 0
+    test eax, eax
+    jnz .spawnNext
+    invoke ExitProcess, 1
+.spawnNext:
     stdcall SpawnPiece
     stdcall CanPlacePiece, [pieceX], [pieceY]
     test eax, eax
@@ -357,7 +368,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     lea eax, [textRect]
     invoke DrawText, ebx, countersLabels, -1, eax, DT_LEFT or DT_NOPREFIX
     lea eax, [countersText]
-    cinvoke wsprintf, eax, countersFormat, [score], [clearedLines]
+    cinvoke wsprintf, eax, countersFormat, [score], [clearedLines], [level]
     lea eax, [textRect]
     lea edx, [countersText]
     invoke DrawText, ebx, edx, -1, eax, DT_RIGHT or DT_NOPREFIX
@@ -382,6 +393,31 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .destroy:
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
+    xor eax, eax
+    ret
+endp
+
+proc UpdateProgress lines
+    mov eax, [lines]
+    add [clearedLines], eax
+    mov eax, [lineScores + eax * 4]
+    imul eax, [level]
+    add [score], eax
+    mov eax, [clearedLines]
+    xor edx, edx
+    mov ecx, LINES_PER_LEVEL
+    div ecx
+    inc eax
+    cmp eax, MAX_LEVEL
+    jbe .checkLevel
+    mov eax, MAX_LEVEL
+.checkLevel:
+    cmp eax, [level]
+    je .unchanged
+    mov [level], eax
+    mov eax, 1
+    ret
+.unchanged:
     xor eax, eax
     ret
 endp
