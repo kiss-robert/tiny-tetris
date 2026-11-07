@@ -17,6 +17,8 @@ section '.data' data readable writeable
     windowClass WNDCLASS 0, WindowProc, 0, 0, 0, 0, 0, 0, 0, className
     message MSG
     boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT, BOARD_BOTTOM
+    pieceX dd 4
+    pieceY dd 0
 
 section '.text' code readable executable
 start:
@@ -48,7 +50,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, previousPen:DWORD
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, previousPen:DWORD
 
     cmp [uMsg], WM_PAINT
     je .paint
@@ -72,6 +74,25 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke CreateSolidBrush, 202020h
     mov esi, eax
     invoke FillRect, ebx, boardRect, esi
+    invoke DeleteObject, esi
+
+    mov eax, [pieceX]
+    imul eax, CELL_SIZE
+    add eax, BOARD_LEFT
+    mov [pieceRect.left], eax
+    add eax, 2 * CELL_SIZE
+    mov [pieceRect.right], eax
+    mov eax, [pieceY]
+    imul eax, CELL_SIZE
+    add eax, BOARD_TOP
+    mov [pieceRect.top], eax
+    add eax, 2 * CELL_SIZE
+    mov [pieceRect.bottom], eax
+
+    invoke CreateSolidBrush, 00D7FFh
+    mov esi, eax
+    lea eax, [pieceRect]
+    invoke FillRect, ebx, eax, esi
     invoke DeleteObject, esi
 
     invoke CreatePen, PS_SOLID, 1, 383838h
