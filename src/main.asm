@@ -108,12 +108,14 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, countersText[64]:BYTE
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, countersText[64]:BYTE, screenDC:DWORD, backBitmap:DWORD, previousBitmap:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
     cmp [uMsg], WM_PAINT
     je .paint
+    cmp [uMsg], WM_ERASEBKGND
+    je .backgroundErased
     cmp [uMsg], WM_KEYDOWN
     je .keyDown
     cmp [uMsg], WM_KEYUP
@@ -339,12 +341,41 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     xor eax, eax
     ret
 
+.backgroundErased:
+    mov eax, 1
+    ret
+
 .paint:
     lea eax, [paint]
     invoke BeginPaint, [hwnd], eax
     mov ebx, eax
+    mov [screenDC], eax
     lea eax, [clientRect]
     invoke GetClientRect, [hwnd], eax
+    cmp [clientRect.right], 0
+    jle .finishPaint
+    cmp [clientRect.bottom], 0
+    jle .finishPaint
+    invoke CreateCompatibleDC, [screenDC]
+    test eax, eax
+    jz .drawScene
+    mov ebx, eax
+    invoke CreateCompatibleBitmap, [screenDC], [clientRect.right], [clientRect.bottom]
+    test eax, eax
+    jz .discardBufferDC
+    mov [backBitmap], eax
+    invoke SelectObject, ebx, eax
+    test eax, eax
+    jz .discardBufferBitmap
+    mov [previousBitmap], eax
+    jmp .drawScene
+
+.discardBufferBitmap:
+    invoke DeleteObject, [backBitmap]
+.discardBufferDC:
+    invoke DeleteDC, ebx
+    mov ebx, [screenDC]
+.drawScene:
     invoke CreateSolidBrush, 121212h
     mov esi, eax
     lea eax, [clientRect]
@@ -480,6 +511,12 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke DrawText, ebx, restartText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
 .restoreFont:
     invoke SelectObject, ebx, [previousFont]
+    cmp ebx, [screenDC]
+    je .finishPaint
+    invoke BitBlt, [screenDC], 0, 0, [clientRect.right], [clientRect.bottom], ebx, 0, 0, SRCCOPY
+    invoke SelectObject, ebx, [previousBitmap]
+    invoke DeleteObject, [backBitmap]
+    invoke DeleteDC, ebx
 .finishPaint:
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
@@ -701,4 +738,4 @@ section '.idata' import data readable writeable
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA', GetTickCount, 'GetTickCount'
     import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA', wsprintf, 'wsprintfA'
-    import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor'
+    import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor', CreateCompatibleDC, 'CreateCompatibleDC', CreateCompatibleBitmap, 'CreateCompatibleBitmap', BitBlt, 'BitBlt', DeleteDC, 'DeleteDC'
