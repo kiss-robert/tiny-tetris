@@ -23,6 +23,8 @@ section '.data' data readable writeable
     pieceY dd 0
     pieceType dd 1
     randomState dd 0
+    pieceBag db 7 dup (0)
+    bagIndex dd 7
     pieceShapes db 0,0, 1,0, 2,0, 3,0
                 db 0,0, 1,0, 0,1, 1,1
                 db 1,0, 0,1, 1,1, 2,1
@@ -84,6 +86,10 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
 .create:
     invoke GetTickCount
+    test eax, eax
+    jnz .seedReady
+    inc eax
+.seedReady:
     mov [randomState], eax
     stdcall SpawnPiece
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
@@ -117,6 +123,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .clearBoard:
     mov byte [board + ecx - 1], 0
     loop .clearBoard
+    mov [bagIndex], 7
     stdcall SpawnPiece
     mov [gameOver], 0
     jmp .redraw
@@ -364,16 +371,62 @@ proc ClearCompletedLines uses ebx esi edi
     ret
 endp
 
-proc SpawnPiece
+proc NextRandom
     mov eax, [randomState]
-    imul eax, 1664525
-    add eax, 1013904223
+    mov edx, eax
+    shl edx, 13
+    xor eax, edx
+    mov edx, eax
+    shr edx, 17
+    xor eax, edx
+    mov edx, eax
+    shl edx, 5
+    xor eax, edx
     mov [randomState], eax
-    shr eax, 16
+    ret
+endp
+
+proc RefillPieceBag uses ebx esi
+    xor ecx, ecx
+.fill:
+    lea eax, [ecx + 1]
+    mov [pieceBag + ecx], al
+    inc ecx
+    cmp ecx, 7
+    jb .fill
+
+    mov ebx, 6
+.shuffle:
+    lea ecx, [ebx + 1]
+    mov eax, -1
     xor edx, edx
-    mov ecx, 7
     div ecx
-    inc edx
+    mov esi, -1
+    sub esi, edx
+.randomIndex:
+    stdcall NextRandom
+    cmp eax, esi
+    ja .randomIndex
+    dec eax
+    xor edx, edx
+    div ecx
+    mov al, [pieceBag + ebx]
+    xchg al, [pieceBag + edx]
+    mov [pieceBag + ebx], al
+    dec ebx
+    jnz .shuffle
+    mov [bagIndex], 0
+    ret
+endp
+
+proc SpawnPiece
+    cmp [bagIndex], 7
+    jb .takePiece
+    stdcall RefillPieceBag
+.takePiece:
+    mov eax, [bagIndex]
+    movzx edx, byte [pieceBag + eax]
+    inc [bagIndex]
     mov [pieceType], edx
     mov [pieceX], 3
     cmp edx, 2
