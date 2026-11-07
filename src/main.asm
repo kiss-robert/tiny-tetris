@@ -21,6 +21,8 @@ section '.data' data readable writeable
     boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT, BOARD_BOTTOM
     pieceX dd 4
     pieceY dd 0
+    board db BOARD_COLUMNS * BOARD_ROWS dup (0)
+    gameOver dd 0
 
 section '.text' code readable executable
 start:
@@ -80,11 +82,15 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     ret
 
 .timer:
+    cmp [gameOver], 0
+    jne .keyHandled
     cmp [wParam], GRAVITY_TIMER_ID
     je .moveDown
     jmp .default
 
 .keyDown:
+    cmp [gameOver], 0
+    jne .keyHandled
     cmp [wParam], VK_LEFT
     je .moveLeft
     cmp [wParam], VK_RIGHT
@@ -94,21 +100,44 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .default
 
 .moveLeft:
-    cmp [pieceX], 0
-    jbe .keyHandled
-    dec [pieceX]
-    jmp .redraw
+    mov ebx, [pieceX]
+    dec ebx
+    jmp .moveHorizontal
 
 .moveRight:
-    cmp [pieceX], BOARD_COLUMNS - 2
-    jae .keyHandled
-    inc [pieceX]
+    mov ebx, [pieceX]
+    inc ebx
+.moveHorizontal:
+    stdcall CanPlacePiece, ebx, [pieceY]
+    test eax, eax
+    jz .keyHandled
+    mov [pieceX], ebx
     jmp .redraw
 
 .moveDown:
-    cmp [pieceY], BOARD_ROWS - 2
-    jae .keyHandled
-    inc [pieceY]
+    mov esi, [pieceY]
+    inc esi
+    stdcall CanPlacePiece, [pieceX], esi
+    test eax, eax
+    jz .lockPiece
+    mov [pieceY], esi
+    jmp .redraw
+
+.lockPiece:
+    mov eax, [pieceY]
+    imul eax, BOARD_COLUMNS
+    add eax, [pieceX]
+    mov byte [board + eax], 1
+    mov byte [board + eax + 1], 1
+    mov byte [board + eax + BOARD_COLUMNS], 1
+    mov byte [board + eax + BOARD_COLUMNS + 1], 1
+    mov [pieceX], 4
+    mov [pieceY], 0
+    stdcall CanPlacePiece, [pieceX], [pieceY]
+    test eax, eax
+    jnz .redraw
+    mov [gameOver], 1
+    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
 
 .redraw:
     invoke InvalidateRect, [hwnd], boardRect, 0
@@ -133,6 +162,35 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke FillRect, ebx, boardRect, esi
     invoke DeleteObject, esi
 
+    invoke CreateSolidBrush, 00D7FFh
+    mov esi, eax
+    xor edi, edi
+.boardCells:
+    cmp byte [board + edi], 0
+    je .nextCell
+    mov eax, edi
+    xor edx, edx
+    mov ecx, BOARD_COLUMNS
+    div ecx
+    imul eax, CELL_SIZE
+    add eax, BOARD_TOP
+    mov [pieceRect.top], eax
+    add eax, CELL_SIZE
+    mov [pieceRect.bottom], eax
+    imul edx, CELL_SIZE
+    add edx, BOARD_LEFT
+    mov [pieceRect.left], edx
+    add edx, CELL_SIZE
+    mov [pieceRect.right], edx
+    lea eax, [pieceRect]
+    invoke FillRect, ebx, eax, esi
+.nextCell:
+    inc edi
+    cmp edi, BOARD_COLUMNS * BOARD_ROWS
+    jb .boardCells
+
+    cmp [gameOver], 0
+    jne .finishPieces
     mov eax, [pieceX]
     imul eax, CELL_SIZE
     add eax, BOARD_LEFT
@@ -146,10 +204,9 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     add eax, 2 * CELL_SIZE
     mov [pieceRect.bottom], eax
 
-    invoke CreateSolidBrush, 00D7FFh
-    mov esi, eax
     lea eax, [pieceRect]
     invoke FillRect, ebx, eax, esi
+.finishPieces:
     invoke DeleteObject, esi
 
     invoke CreatePen, PS_SOLID, 1, 383838h
@@ -183,6 +240,29 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .destroy:
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
+    xor eax, eax
+    ret
+endp
+
+proc CanPlacePiece x, y
+    cmp [x], BOARD_COLUMNS - 2
+    ja .blocked
+    cmp [y], BOARD_ROWS - 2
+    ja .blocked
+    mov eax, [y]
+    imul eax, BOARD_COLUMNS
+    add eax, [x]
+    cmp byte [board + eax], 0
+    jne .blocked
+    cmp byte [board + eax + 1], 0
+    jne .blocked
+    cmp byte [board + eax + BOARD_COLUMNS], 0
+    jne .blocked
+    cmp byte [board + eax + BOARD_COLUMNS + 1], 0
+    jne .blocked
+    mov eax, 1
+    ret
+.blocked:
     xor eax, eax
     ret
 endp
