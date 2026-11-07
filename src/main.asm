@@ -21,6 +21,16 @@ section '.data' data readable writeable
     boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT, BOARD_BOTTOM
     pieceX dd 4
     pieceY dd 0
+    pieceType dd 1
+    randomState dd 0
+    pieceShapes db 0,0, 1,0, 2,0, 3,0
+                db 0,0, 1,0, 0,1, 1,1
+                db 1,0, 0,1, 1,1, 2,1
+                db 1,0, 2,0, 0,1, 1,1
+                db 0,0, 1,0, 1,1, 2,1
+                db 0,0, 0,1, 1,1, 2,1
+                db 2,0, 0,1, 1,1, 2,1
+    pieceColors dd 0, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
     board db BOARD_COLUMNS * BOARD_ROWS dup (0)
     gameOver dd 0
     gameOverText db 'GAME OVER', 0
@@ -56,7 +66,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
@@ -73,6 +83,9 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     ret
 
 .create:
+    invoke GetTickCount
+    mov [randomState], eax
+    stdcall SpawnPiece
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
     test eax, eax
     jz .createFailed
@@ -104,8 +117,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .clearBoard:
     mov byte [board + ecx - 1], 0
     loop .clearBoard
-    mov [pieceX], 4
-    mov [pieceY], 0
+    stdcall SpawnPiece
     mov [gameOver], 0
     jmp .redraw
 
@@ -143,16 +155,23 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .redraw
 
 .lockPiece:
-    mov eax, [pieceY]
+    mov esi, [pieceType]
+    dec esi
+    lea esi, [pieceShapes + esi * 8]
+    mov ecx, 4
+.lockCell:
+    movzx eax, byte [esi + 1]
+    add eax, [pieceY]
     imul eax, BOARD_COLUMNS
+    movzx edx, byte [esi]
+    add eax, edx
     add eax, [pieceX]
-    mov byte [board + eax], 1
-    mov byte [board + eax + 1], 1
-    mov byte [board + eax + BOARD_COLUMNS], 1
-    mov byte [board + eax + BOARD_COLUMNS + 1], 1
+    mov edx, [pieceType]
+    mov [board + eax], dl
+    add esi, 2
+    loop .lockCell
     stdcall ClearCompletedLines
-    mov [pieceX], 4
-    mov [pieceY], 0
+    stdcall SpawnPiece
     stdcall CanPlacePiece, [pieceX], [pieceY]
     test eax, eax
     jnz .redraw
@@ -182,12 +201,19 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke FillRect, ebx, boardRect, esi
     invoke DeleteObject, esi
 
-    invoke CreateSolidBrush, 00D7FFh
-    mov esi, eax
+    mov edi, 1
+.createPieceBrushes:
+    invoke CreateSolidBrush, [pieceColors + edi * 4]
+    mov [pieceBrushes + edi * 4], eax
+    inc edi
+    cmp edi, 7
+    jbe .createPieceBrushes
     xor edi, edi
 .boardCells:
-    cmp byte [board + edi], 0
+    movzx eax, byte [board + edi]
+    test eax, eax
     je .nextCell
+    mov esi, [pieceBrushes + eax * 4]
     mov eax, edi
     xor edx, edx
     mov ecx, BOARD_COLUMNS
@@ -211,23 +237,40 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
     cmp [gameOver], 0
     jne .finishPieces
-    mov eax, [pieceX]
+    mov eax, [pieceType]
+    mov esi, [pieceBrushes + eax * 4]
+    dec eax
+    lea edi, [pieceShapes + eax * 8]
+.activeCells:
+    movzx eax, byte [edi]
+    add eax, [pieceX]
     imul eax, CELL_SIZE
     add eax, BOARD_LEFT
     mov [pieceRect.left], eax
-    add eax, 2 * CELL_SIZE
+    add eax, CELL_SIZE
     mov [pieceRect.right], eax
-    mov eax, [pieceY]
+    movzx eax, byte [edi + 1]
+    add eax, [pieceY]
     imul eax, CELL_SIZE
     add eax, BOARD_TOP
     mov [pieceRect.top], eax
-    add eax, 2 * CELL_SIZE
+    add eax, CELL_SIZE
     mov [pieceRect.bottom], eax
 
     lea eax, [pieceRect]
     invoke FillRect, ebx, eax, esi
+    add edi, 2
+    mov eax, [pieceType]
+    lea eax, [pieceShapes + eax * 8]
+    cmp edi, eax
+    jb .activeCells
 .finishPieces:
-    invoke DeleteObject, esi
+    mov edi, 1
+.deletePieceBrushes:
+    invoke DeleteObject, [pieceBrushes + edi * 4]
+    inc edi
+    cmp edi, 7
+    jbe .deletePieceBrushes
 
     invoke CreatePen, PS_SOLID, 1, 383838h
     mov esi, eax
@@ -321,22 +364,46 @@ proc ClearCompletedLines uses ebx esi edi
     ret
 endp
 
-proc CanPlacePiece x, y
-    cmp [x], BOARD_COLUMNS - 2
-    ja .blocked
-    cmp [y], BOARD_ROWS - 2
-    ja .blocked
-    mov eax, [y]
+proc SpawnPiece
+    mov eax, [randomState]
+    imul eax, 1664525
+    add eax, 1013904223
+    mov [randomState], eax
+    shr eax, 16
+    xor edx, edx
+    mov ecx, 7
+    div ecx
+    inc edx
+    mov [pieceType], edx
+    mov [pieceX], 3
+    cmp edx, 2
+    jne .setRow
+    mov [pieceX], 4
+.setRow:
+    mov [pieceY], 0
+    ret
+endp
+
+proc CanPlacePiece uses esi, x, y
+    mov esi, [pieceType]
+    dec esi
+    lea esi, [pieceShapes + esi * 8]
+    mov ecx, 4
+.checkCell:
+    movzx edx, byte [esi]
+    add edx, [x]
+    cmp edx, BOARD_COLUMNS
+    jae .blocked
+    movzx eax, byte [esi + 1]
+    add eax, [y]
+    cmp eax, BOARD_ROWS
+    jae .blocked
     imul eax, BOARD_COLUMNS
-    add eax, [x]
+    add eax, edx
     cmp byte [board + eax], 0
     jne .blocked
-    cmp byte [board + eax + 1], 0
-    jne .blocked
-    cmp byte [board + eax + BOARD_COLUMNS], 0
-    jne .blocked
-    cmp byte [board + eax + BOARD_COLUMNS + 1], 0
-    jne .blocked
+    add esi, 2
+    loop .checkCell
     mov eax, 1
     ret
 .blocked:
@@ -347,6 +414,6 @@ endp
 section '.idata' import data readable writeable
     library kernel32, 'KERNEL32.DLL', user32, 'USER32.DLL', gdi32, 'GDI32.DLL'
 
-    import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA'
+    import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA', GetTickCount, 'GetTickCount'
     import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA'
     import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor'
