@@ -23,6 +23,8 @@ section '.data' data readable writeable
     pieceY dd 0
     board db BOARD_COLUMNS * BOARD_ROWS dup (0)
     gameOver dd 0
+    gameOverText db 'GAME OVER', 0
+    restartText db 'Press R to restart', 0
 
 section '.text' code readable executable
 start:
@@ -54,7 +56,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, previousPen:DWORD
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
@@ -90,7 +92,24 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
 .keyDown:
     cmp [gameOver], 0
+    je .playingKeys
+    cmp [wParam], 'R'
     jne .keyHandled
+    test [lParam], 40000000h
+    jnz .keyHandled
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GRAVITY_INTERVAL, 0
+    test eax, eax
+    jz .keyHandled
+    mov ecx, BOARD_COLUMNS * BOARD_ROWS
+.clearBoard:
+    mov byte [board + ecx - 1], 0
+    loop .clearBoard
+    mov [pieceX], 4
+    mov [pieceY], 0
+    mov [gameOver], 0
+    jmp .redraw
+
+.playingKeys:
     cmp [wParam], VK_LEFT
     je .moveLeft
     cmp [wParam], VK_RIGHT
@@ -141,7 +160,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
 
 .redraw:
-    invoke InvalidateRect, [hwnd], boardRect, 0
+    invoke InvalidateRect, [hwnd], 0, 0
 .keyHandled:
     xor eax, eax
     ret
@@ -233,6 +252,27 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
     invoke SelectObject, ebx, [previousPen]
     invoke DeleteObject, esi
+    cmp [gameOver], 0
+    je .finishPaint
+    invoke GetStockObject, DEFAULT_GUI_FONT
+    invoke SelectObject, ebx, eax
+    mov [previousFont], eax
+    invoke SetBkMode, ebx, TRANSPARENT
+    invoke SetTextColor, ebx, 0E0E0E0h
+    mov [textRect.left], BOARD_RIGHT + 12
+    mov eax, [clientRect.right]
+    sub eax, 12
+    mov [textRect.right], eax
+    mov [textRect.top], BOARD_TOP
+    mov [textRect.bottom], BOARD_TOP + 40
+    lea eax, [textRect]
+    invoke DrawText, ebx, gameOverText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
+    mov [textRect.top], BOARD_TOP + 48
+    mov [textRect.bottom], BOARD_TOP + 120
+    lea eax, [textRect]
+    invoke DrawText, ebx, restartText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
+    invoke SelectObject, ebx, [previousFont]
+.finishPaint:
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
     xor eax, eax
@@ -308,5 +348,5 @@ section '.idata' import data readable writeable
     library kernel32, 'KERNEL32.DLL', user32, 'USER32.DLL', gdi32, 'GDI32.DLL'
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA'
-    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer'
-    import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo'
+    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA'
+    import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor'
