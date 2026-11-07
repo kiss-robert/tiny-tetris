@@ -22,16 +22,38 @@ section '.data' data readable writeable
     pieceX dd 4
     pieceY dd 0
     pieceType dd 1
+    pieceRotation dd 0
     randomState dd 0
     pieceBag db 7 dup (0)
     bagIndex dd 7
-    pieceShapes db 0,0, 1,0, 2,0, 3,0
+    pieceShapes db 0,1, 1,1, 2,1, 3,1
+                db 2,0, 2,1, 2,2, 2,3
+                db 3,2, 2,2, 1,2, 0,2
+                db 1,3, 1,2, 1,1, 1,0
+                db 0,0, 1,0, 0,1, 1,1
+                db 0,0, 1,0, 0,1, 1,1
+                db 0,0, 1,0, 0,1, 1,1
                 db 0,0, 1,0, 0,1, 1,1
                 db 1,0, 0,1, 1,1, 2,1
+                db 2,1, 1,0, 1,1, 1,2
+                db 1,2, 2,1, 1,1, 0,1
+                db 0,1, 1,2, 1,1, 1,0
                 db 1,0, 2,0, 0,1, 1,1
+                db 2,1, 2,2, 1,0, 1,1
+                db 1,2, 0,2, 2,1, 1,1
+                db 0,1, 0,0, 1,2, 1,1
                 db 0,0, 1,0, 1,1, 2,1
+                db 2,0, 2,1, 1,1, 1,2
+                db 2,2, 1,2, 1,1, 0,1
+                db 0,2, 0,1, 1,1, 1,0
                 db 0,0, 0,1, 1,1, 2,1
+                db 2,0, 1,0, 1,1, 1,2
+                db 2,2, 2,1, 1,1, 0,1
+                db 0,2, 1,2, 1,1, 1,0
                 db 2,0, 0,1, 1,1, 2,1
+                db 2,2, 1,0, 1,1, 1,2
+                db 0,2, 2,1, 1,1, 0,1
+                db 0,0, 1,2, 1,1, 1,0
     pieceColors dd 0, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
     board db BOARD_COLUMNS * BOARD_ROWS dup (0)
     gameOver dd 0
@@ -68,7 +90,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD
+    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
@@ -135,7 +157,17 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .moveRight
     cmp [wParam], VK_DOWN
     je .moveDown
+    cmp [wParam], VK_UP
+    je .rotate
     jmp .default
+
+.rotate:
+    test [lParam], 40000000h
+    jnz .keyHandled
+    stdcall TryRotatePiece
+    test eax, eax
+    jz .keyHandled
+    jmp .redraw
 
 .moveLeft:
     mov ebx, [pieceX]
@@ -162,9 +194,8 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .redraw
 
 .lockPiece:
-    mov esi, [pieceType]
-    dec esi
-    lea esi, [pieceShapes + esi * 8]
+    stdcall GetPieceShape
+    mov esi, eax
     mov ecx, 4
 .lockCell:
     movzx eax, byte [esi + 1]
@@ -246,8 +277,10 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jne .finishPieces
     mov eax, [pieceType]
     mov esi, [pieceBrushes + eax * 4]
-    dec eax
-    lea edi, [pieceShapes + eax * 8]
+    stdcall GetPieceShape
+    mov edi, eax
+    add eax, 8
+    mov [shapeEnd], eax
 .activeCells:
     movzx eax, byte [edi]
     add eax, [pieceX]
@@ -267,9 +300,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     lea eax, [pieceRect]
     invoke FillRect, ebx, eax, esi
     add edi, 2
-    mov eax, [pieceType]
-    lea eax, [pieceShapes + eax * 8]
-    cmp edi, eax
+    cmp edi, [shapeEnd]
     jb .activeCells
 .finishPieces:
     mov edi, 1
@@ -428,6 +459,7 @@ proc SpawnPiece
     movzx edx, byte [pieceBag + eax]
     inc [bagIndex]
     mov [pieceType], edx
+    mov [pieceRotation], 0
     mov [pieceX], 3
     cmp edx, 2
     jne .setRow
@@ -437,10 +469,35 @@ proc SpawnPiece
     ret
 endp
 
+proc GetPieceShape
+    mov eax, [pieceType]
+    dec eax
+    shl eax, 5
+    mov edx, [pieceRotation]
+    lea eax, [pieceShapes + eax + edx * 8]
+    ret
+endp
+
+proc TryRotatePiece uses ebx
+    cmp [pieceType], 2
+    je .unchanged
+    mov ebx, [pieceRotation]
+    lea eax, [ebx + 1]
+    and eax, 3
+    mov [pieceRotation], eax
+    stdcall CanPlacePiece, [pieceX], [pieceY]
+    test eax, eax
+    jnz .done
+    mov [pieceRotation], ebx
+.unchanged:
+    xor eax, eax
+.done:
+    ret
+endp
+
 proc CanPlacePiece uses esi, x, y
-    mov esi, [pieceType]
-    dec esi
-    lea esi, [pieceShapes + esi * 8]
+    stdcall GetPieceShape
+    mov esi, eax
     mov ecx, 4
 .checkCell:
     movzx edx, byte [esi]
