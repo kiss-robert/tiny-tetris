@@ -26,14 +26,9 @@ section '.data' data readable writeable
     windowTitle db 'TinyTetris', 0
     className db 'TinyTetrisWindow', 0
     windowClass WNDCLASS 0, WindowProc, 0, 0, 0, 0, 0, 0, 0, className
-    message MSG
     boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT, BOARD_BOTTOM
     pieceX dd 4
-    pieceY dd 0
     pieceType dd 1
-    pieceRotation dd 0
-    randomState dd 0
-    pieceBag db 7 dup (0)
     bagIndex dd 7
     pieceShapes db 0,1, 1,1, 2,1, 3,1
                 db 2,0, 2,1, 2,2, 2,3
@@ -64,19 +59,25 @@ section '.data' data readable writeable
                 db 0,2, 2,1, 1,1, 0,1
                 db 0,0, 1,2, 1,1, 1,0
     pieceColors dd 0, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
-    board db BOARD_COLUMNS * BOARD_ROWS dup (0)
-    gameOver dd 0
-    score dd 0
-    clearedLines dd 0
     level dd 1
-    heldKeys dd 0
-    horizontalDirection dd 0
     gravityIntervals dd 1000, 793, 618, 473, 355, 262, 190, 135, 94, 64
     lineScores dd 0, 100, 300, 500, 800
     countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 13, 10, 13, 10, 'LEVEL', 0
     countersFormat db '%u', 13, 10, 13, 10, '%u', 13, 10, 13, 10, '%u', 0
     gameOverText db 'GAME OVER', 0
     restartText db 'Press R to restart', 0
+
+    message MSG
+    board rb BOARD_COLUMNS * BOARD_ROWS
+    pieceBag rb 7
+    pieceY rd 1
+    pieceRotation rd 1
+    randomState rd 1
+    gameOver rd 1
+    score rd 1
+    clearedLines rd 1
+    heldKeys rd 1
+    horizontalDirection rd 1
 
 section '.text' code readable executable
 start:
