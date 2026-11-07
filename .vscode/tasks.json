@@ -1,0 +1,32 @@
+
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build",
+      "type": "process",
+      "command": "C:\\Tools\\fasm\\FASM.EXE",
+      "args": [
+        "${workspaceFolder}\\src\\main.asm",
+        "${workspaceFolder}\\build\\TinyTetris.exe"
+      ],
+      "options": {
+        "env": {
+          "INCLUDE": "C:\\Tools\\fasm\\INCLUDE"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run",
+      "type": "process",
+      "command": "${workspaceFolder}\\build\\TinyTetris.exe",
+      "dependsOn": "Build",
+      "problemMatcher": []
+    }
+  ]
+}
