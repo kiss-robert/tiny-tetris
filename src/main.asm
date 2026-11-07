@@ -61,7 +61,7 @@ section '.data' data readable writeable
     score dd 0
     clearedLines dd 0
     level dd 1
-    gravityIntervals dd 700, 600, 500, 400, 320, 250, 190, 140, 100, 70
+    gravityIntervals dd 1000, 793, 618, 473, 355, 262, 190, 135, 94, 64
     lineScores dd 0, 100, 300, 500, 800
     countersLabels db 'SCORE', 13, 10, 13, 10, 'LINES', 13, 10, 13, 10, 'LEVEL', 0
     countersFormat db '%u', 13, 10, 13, 10, '%u', 13, 10, 13, 10, '%u', 0
