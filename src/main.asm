@@ -54,9 +54,44 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
     cmp [uMsg], WM_PAINT
     je .paint
+    cmp [uMsg], WM_KEYDOWN
+    je .keyDown
     cmp [uMsg], WM_DESTROY
     je .destroy
+.default:
     invoke DefWindowProc, [hwnd], [uMsg], [wParam], [lParam]
+    ret
+
+.keyDown:
+    cmp [wParam], VK_LEFT
+    je .moveLeft
+    cmp [wParam], VK_RIGHT
+    je .moveRight
+    cmp [wParam], VK_DOWN
+    je .moveDown
+    jmp .default
+
+.moveLeft:
+    cmp [pieceX], 0
+    jbe .keyHandled
+    dec [pieceX]
+    jmp .redraw
+
+.moveRight:
+    cmp [pieceX], BOARD_COLUMNS - 2
+    jae .keyHandled
+    inc [pieceX]
+    jmp .redraw
+
+.moveDown:
+    cmp [pieceY], BOARD_ROWS - 2
+    jae .keyHandled
+    inc [pieceY]
+
+.redraw:
+    invoke InvalidateRect, [hwnd], boardRect, 0
+.keyHandled:
+    xor eax, eax
     ret
 
 .paint:
@@ -133,5 +168,5 @@ section '.idata' import data readable writeable
     library kernel32, 'KERNEL32.DLL', user32, 'USER32.DLL', gdi32, 'GDI32.DLL'
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA'
-    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect'
+    import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect'
     import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo'
