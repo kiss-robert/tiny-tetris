@@ -59,3 +59,13 @@ Result: `.text` shrank **2824 -> 2645 bytes**, saving **179 code bytes**. The im
 Validation: the build passed. A temporary harness compared every RGB pixel of 504 full 532-by-800 frames rendered by the old and new procedures. All seven shapes and four rotations, three positions, empty/sparse/dense boards, counters, and game-over text were covered; no pixel differed. GDI object counts were stable after warm-up. All 34 elapsed-time regression scenarios also passed, and gameplay helper source is unchanged. Verification files were kept outside the project. Manual gameplay confirmation is pending.
 
 Tradeoff: all 200 cells are filled on each paint, including empty cells. In one local offscreen benchmark, 1000 empty-board frames took 766 ms before and 953 ms after the change, approximately 0.19 ms more per frame. These timings describe that benchmark rather than a guaranteed on-screen frame rate.
+
+## Experiment 5: Trim instruction encodings
+
+Hypothesis: save the remaining 85 code bytes through equivalent shorter instruction encodings and redundant-condition removal, crossing the next 512-byte file boundary.
+
+Small register constants use balanced `push`/`pop` pairs where shorter than `mov`. Full-width zero stores use `and` with zero, and all-ones constants use `or` with -1 where the changed flags are not subsequently consumed. The key-repeat check tests the relevant byte of `lParam`; duplicate checks in the restart and rotation paths were removed because both are reached through the initial key-down check. `GetPieceShape` folds the type-index adjustment into its address expression. Data layout, imports, function signatures, and reserved local frames are unchanged.
+
+Result: `.text` shrank **2645 -> 2552 bytes**, saving **93 code bytes**. Its file allocation fell from 3072 to 2560 bytes, reducing the executable **5120 -> 4608 bytes**, a **512-byte (10%)** saving. Eight code bytes remain before the section would exceed that boundary again.
+
+Validation: the build passed. Temporary checks passed 504 full-frame RGB comparisons, 34 elapsed-time scenarios, 28224 placement/rotation scenarios, 40000 seven-piece bags with 24 partial-bag resets, and score/level checks at 10-, 100-, and 1000-line thresholds. All 256 high-byte key-flag combinations were checked for movement, rotation, and restart. Verification files were kept outside the project. Manual gameplay confirmation is pending.

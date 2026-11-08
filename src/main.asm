@@ -156,7 +156,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .keyHandled
 
 .createFailed:
-    mov eax, -1
+    or eax, -1
     jmp .return
 
 .timer:
@@ -181,14 +181,12 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .moveRight
 
 .keyDown:
-    test [lParam], 40000000h
+    test byte [lParam + 3], 40h
     jnz .keyHandled
     cmp [gameOver], 0
     je .playingKeys
     cmp [wParam], 'R'
     jne .keyHandled
-    test [lParam], 40000000h
-    jnz .keyHandled
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GAME_TICK_INTERVAL, 0
     test eax, eax
     jz .keyHandled
@@ -197,14 +195,14 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .clearBoard:
     mov byte [board + ecx - 1], 0
     loop .clearBoard
-    mov [score], 0
-    mov [clearedLines], 0
+    and [score], 0
+    and [clearedLines], 0
     mov [level], 1
     mov [bagIndex], 7
     stdcall SpawnPiece
     invoke GetTickCount
     mov [gravityTick], eax
-    mov [gameOver], 0
+    and [gameOver], 0
     jmp .redraw
 
 .playingKeys:
@@ -263,7 +261,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     test [heldKeys], LEFT_HELD
     jnz .pressLeft
 .stopHorizontal:
-    mov [horizontalDirection], 0
+    and [horizontalDirection], 0
     invoke KillTimer, [hwnd], HORIZONTAL_TIMER_ID
     jmp .keyHandled
 
@@ -272,8 +270,6 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .keyHandled
 
 .rotate:
-    test [lParam], 40000000h
-    jnz .keyHandled
     stdcall TryRotatePiece
     test eax, eax
     jz .keyHandled
@@ -304,11 +300,12 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .return
 
 .backgroundErased:
-    mov eax, 1
+    push 1
+    pop eax
     jmp .return
 
 .destroy:
-    mov [clockStarted], 0
+    and [clockStarted], 0
     stdcall ResetInput, [hwnd]
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
@@ -427,7 +424,8 @@ proc DrawCell hdc, brush, cellIndex, color
 
     mov eax, [cellIndex]
     xor edx, edx
-    mov ecx, BOARD_COLUMNS
+    push BOARD_COLUMNS
+    pop ecx
     div ecx
     imul eax, CELL_SIZE
     add eax, BOARD_TOP + 1
@@ -467,7 +465,8 @@ proc AdvanceGameTime uses ebx esi, hwnd
     jb .finish
     add [gravityTick], ecx
     stdcall StepPieceDown, [hwnd]
-    mov esi, 1
+    push 1
+    pop esi
     cmp [gameOver], 0
     je .nextStep
 .finish:
@@ -489,7 +488,8 @@ proc StepPieceDown uses esi, hwnd
 .lockPiece:
     stdcall GetPieceShape
     mov esi, eax
-    mov ecx, 4
+    push 4
+    pop ecx
 .lockCell:
     movzx eax, byte [esi + 1]
     add eax, [pieceY]
@@ -524,8 +524,8 @@ proc StartHorizontalRepeat hwnd, direction
 endp
 
 proc ResetInput hwnd
-    mov [heldKeys], 0
-    mov [horizontalDirection], 0
+    and [heldKeys], 0
+    and [horizontalDirection], 0
     invoke KillTimer, [hwnd], HORIZONTAL_TIMER_ID
     invoke KillTimer, [hwnd], SOFT_DROP_TIMER_ID
     ret
@@ -544,12 +544,14 @@ proc UpdateProgress lines
     inc eax
     cmp eax, MAX_LEVEL
     jbe .checkLevel
-    mov eax, MAX_LEVEL
+    push MAX_LEVEL
+    pop eax
 .checkLevel:
     cmp eax, [level]
     je .unchanged
     mov [level], eax
-    mov eax, 1
+    push 1
+    pop eax
     jmp .done
 .unchanged:
     xor eax, eax
@@ -562,7 +564,8 @@ proc ClearCompletedLines uses ebx esi edi
     mov ebx, (BOARD_ROWS - 1) * BOARD_COLUMNS
 .checkRow:
     lea esi, [board + ebx]
-    mov ecx, BOARD_COLUMNS
+    push BOARD_COLUMNS
+    pop ecx
 .checkCell:
     cmp byte [esi], 0
     je .previousRow
@@ -583,7 +586,8 @@ proc ClearCompletedLines uses ebx esi edi
     loop .shiftCells
 
 .clearTopRow:
-    mov ecx, BOARD_COLUMNS
+    push BOARD_COLUMNS
+    pop ecx
 .clearCell:
     mov byte [board + ecx - 1], 0
     loop .clearCell
@@ -620,13 +624,14 @@ proc RefillPieceBag uses ebx esi
     cmp ecx, 7
     jb .fill
 
-    mov ebx, 6
+    push 6
+    pop ebx
 .shuffle:
     lea ecx, [ebx + 1]
-    mov eax, -1
+    or eax, -1
     xor edx, edx
     div ecx
-    mov esi, -1
+    or esi, -1
     sub esi, edx
 .randomIndex:
     stdcall NextRandom
@@ -640,7 +645,7 @@ proc RefillPieceBag uses ebx esi
     mov [pieceBag + ebx], al
     dec ebx
     jnz .shuffle
-    mov [bagIndex], 0
+    and [bagIndex], 0
     ret
 endp
 
@@ -653,22 +658,20 @@ proc SpawnPiece
     movzx edx, byte [pieceBag + eax]
     inc [bagIndex]
     mov [pieceType], edx
-    mov [pieceRotation], 0
+    and [pieceRotation], 0
     mov [pieceX], 3
     cmp edx, 2
     jne .setRow
     mov [pieceX], 4
 .setRow:
-    mov [pieceY], 0
+    and [pieceY], 0
     ret
 endp
 
 proc GetPieceShape
-    mov eax, [pieceType]
-    dec eax
-    shl eax, 5
+    imul eax, [pieceType], 32
     mov edx, [pieceRotation]
-    lea eax, [pieceShapes + eax + edx * 8]
+    lea eax, [pieceShapes - 32 + eax + edx * 8]
     ret
 endp
 
@@ -692,7 +695,8 @@ endp
 proc CanPlacePiece uses esi, x, y
     stdcall GetPieceShape
     mov esi, eax
-    mov ecx, 4
+    push 4
+    pop ecx
 .checkCell:
     movzx edx, byte [esi]
     add edx, [x]
@@ -708,7 +712,8 @@ proc CanPlacePiece uses esi, x, y
     jne .blocked
     add esi, 2
     loop .checkCell
-    mov eax, 1
+    push 1
+    pop eax
     jmp .done
 .blocked:
     xor eax, eax
