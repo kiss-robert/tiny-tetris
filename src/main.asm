@@ -11,6 +11,7 @@ BOARD_TOP = 30
 BOARD_RIGHT = BOARD_LEFT + BOARD_COLUMNS * CELL_SIZE
 BOARD_BOTTOM = BOARD_TOP + BOARD_ROWS * CELL_SIZE
 GRAVITY_TIMER_ID = 1
+GAME_TICK_INTERVAL = 15
 HORIZONTAL_TIMER_ID = 2
 SOFT_DROP_TIMER_ID = 3
 HORIZONTAL_DELAY = 150
@@ -78,6 +79,8 @@ section '.data' data readable writeable
     clearedLines rd 1
     heldKeys rd 1
     horizontalDirection rd 1
+    gravityTick rd 1
+    clockStarted rd 1
 
 section '.text' code readable executable
 start:
@@ -113,6 +116,9 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 
     cmp [uMsg], WM_CREATE
     je .create
+    cmp [uMsg], WM_DESTROY
+    je .destroy
+    stdcall AdvanceGameTime, [hwnd]
     cmp [uMsg], WM_PAINT
     je .paint
     cmp [uMsg], WM_ERASEBKGND
@@ -125,24 +131,27 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .loseFocus
     cmp [uMsg], WM_TIMER
     je .timer
-    cmp [uMsg], WM_DESTROY
-    je .destroy
 .default:
     invoke DefWindowProc, [hwnd], [uMsg], [wParam], [lParam]
+    mov ebx, eax
+    stdcall AdvanceGameTime, [hwnd]
+    mov eax, ebx
 .return:
     ret
 
 .create:
     invoke GetTickCount
+    mov [gravityTick], eax
     test eax, eax
     jnz .seedReady
     inc eax
 .seedReady:
     mov [randomState], eax
     stdcall SpawnPiece
-    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GAME_TICK_INTERVAL, 0
     test eax, eax
     jz .createFailed
+    mov [clockStarted], 1
     jmp .keyHandled
 
 .createFailed:
@@ -153,17 +162,12 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     cmp [gameOver], 0
     jne .keyHandled
     cmp [wParam], GRAVITY_TIMER_ID
-    je .gravity
+    je .keyHandled
     cmp [wParam], HORIZONTAL_TIMER_ID
     je .horizontalRepeat
     cmp [wParam], SOFT_DROP_TIMER_ID
-    je .softDropRepeat
+    je .keyHandled
     jmp .default
-
-.gravity:
-    test [heldKeys], DOWN_HELD
-    jnz .keyHandled
-    jmp .moveDown
 
 .horizontalRepeat:
     cmp [horizontalDirection], 0
@@ -175,11 +179,6 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .moveLeft
     jmp .moveRight
 
-.softDropRepeat:
-    test [heldKeys], DOWN_HELD
-    jz .keyHandled
-    jmp .moveDown
-
 .keyDown:
     test [lParam], 40000000h
     jnz .keyHandled
@@ -189,7 +188,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jne .keyHandled
     test [lParam], 40000000h
     jnz .keyHandled
-    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
+    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, GAME_TICK_INTERVAL, 0
     test eax, eax
     jz .keyHandled
     stdcall ResetInput, [hwnd]
@@ -202,6 +201,8 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     mov [level], 1
     mov [bagIndex], 7
     stdcall SpawnPiece
+    invoke GetTickCount
+    mov [gravityTick], eax
     mov [gameOver], 0
     jmp .redraw
 
@@ -231,6 +232,8 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke SetTimer, [hwnd], SOFT_DROP_TIMER_ID, SOFT_DROP_INTERVAL, 0
     test eax, eax
     jz start.error
+    invoke GetTickCount
+    mov [gravityTick], eax
     jmp .moveDown
 
 .keyUp:
@@ -291,46 +294,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .redraw
 
 .moveDown:
-    mov esi, [pieceY]
-    inc esi
-    stdcall CanPlacePiece, [pieceX], esi
-    test eax, eax
-    jz .lockPiece
-    mov [pieceY], esi
-    jmp .redraw
-
-.lockPiece:
-    stdcall GetPieceShape
-    mov esi, eax
-    mov ecx, 4
-.lockCell:
-    movzx eax, byte [esi + 1]
-    add eax, [pieceY]
-    imul eax, BOARD_COLUMNS
-    movzx edx, byte [esi]
-    add eax, edx
-    add eax, [pieceX]
-    mov edx, [pieceType]
-    mov [board + eax], dl
-    add esi, 2
-    loop .lockCell
-    stdcall ClearCompletedLines
-    stdcall UpdateProgress, eax
-    test eax, eax
-    jz .spawnNext
-    mov eax, [level]
-    dec eax
-    invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals + eax * 4], 0
-    test eax, eax
-    jz start.error
-.spawnNext:
-    stdcall SpawnPiece
-    stdcall CanPlacePiece, [pieceX], [pieceY]
-    test eax, eax
-    jnz .redraw
-    mov [gameOver], 1
-    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
-    stdcall ResetInput, [hwnd]
+    stdcall StepPieceDown, [hwnd]
 
 .redraw:
     invoke InvalidateRect, [hwnd], 0, 0
@@ -343,6 +307,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     jmp .return
 
 .destroy:
+    mov [clockStarted], 0
     stdcall ResetInput, [hwnd]
     invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
     invoke PostQuitMessage, 0
@@ -524,6 +489,75 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
     jmp .keyHandled
+endp
+
+proc AdvanceGameTime uses ebx esi, hwnd
+    cmp [clockStarted], 0
+    je .done
+    cmp [gameOver], 0
+    jne .done
+    invoke GetTickCount
+    mov ebx, eax
+    xor esi, esi
+.nextStep:
+    mov eax, [level]
+    dec eax
+    mov ecx, [gravityIntervals + eax * 4]
+    test [heldKeys], DOWN_HELD
+    jz .checkElapsed
+    mov ecx, SOFT_DROP_INTERVAL
+.checkElapsed:
+    mov eax, ebx
+    sub eax, [gravityTick]
+    cmp eax, ecx
+    jb .finish
+    add [gravityTick], ecx
+    stdcall StepPieceDown, [hwnd]
+    mov esi, 1
+    cmp [gameOver], 0
+    je .nextStep
+.finish:
+    test esi, esi
+    jz .done
+    invoke InvalidateRect, [hwnd], 0, 0
+.done:
+    ret
+endp
+
+proc StepPieceDown uses esi, hwnd
+    mov esi, [pieceY]
+    inc esi
+    stdcall CanPlacePiece, [pieceX], esi
+    test eax, eax
+    jz .lockPiece
+    mov [pieceY], esi
+    jmp .done
+.lockPiece:
+    stdcall GetPieceShape
+    mov esi, eax
+    mov ecx, 4
+.lockCell:
+    movzx eax, byte [esi + 1]
+    add eax, [pieceY]
+    imul eax, BOARD_COLUMNS
+    movzx edx, byte [esi]
+    add eax, edx
+    add eax, [pieceX]
+    mov edx, [pieceType]
+    mov [board + eax], dl
+    add esi, 2
+    loop .lockCell
+    stdcall ClearCompletedLines
+    stdcall UpdateProgress, eax
+    stdcall SpawnPiece
+    stdcall CanPlacePiece, [pieceX], [pieceY]
+    test eax, eax
+    jnz .done
+    mov [gameOver], 1
+    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
+    stdcall ResetInput, [hwnd]
+.done:
+    ret
 endp
 
 proc StartHorizontalRepeat hwnd, direction
