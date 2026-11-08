@@ -37,3 +37,13 @@ Only the local declaration order changed: `countersText` now follows `paint`. Th
 Result: `.text` shrank **2838 -> 2763 bytes**, saving **75 code bytes**. The executable remains **5120 bytes** because `.text` still rounds up to 3072 bytes. Another 203 code bytes must be removed to reach the next 2560-byte section boundary. Retained as a code-size reduction toward that boundary.
 
 Validation: the build passed. A temporary harness using the current procedures passed real offscreen GDI pixel checks and 502 paint cycles without growth in GDI object count. Verification files were kept outside the project. Manual gameplay confirmation is pending.
+
+## Experiment 3: Share return and fatal-error paths
+
+Hypothesis: replace duplicate procedure epilogues and fatal-error calls with branches to shared code, retaining the required return values and register restoration.
+
+`WindowProc` now uses one seven-byte epilogue instead of seven copies. Its successful zero returns share the same path, while creation failure, background erasure, and default processing preserve their distinct return values. Fatal timer failures branch to the existing startup error exit. `UpdateProgress` and `CanPlacePiece` also share their respective epilogues.
+
+Result: `.text` shrank **2763 -> 2718 bytes**, saving **45 code bytes**. The executable remains **5120 bytes**. Another 158 code bytes must be removed to reach the next 2560-byte section boundary. Retained as a further code-size reduction.
+
+Validation: the build passed. Temporary checks covered keyboard message sequences, 502 offscreen paint cycles without GDI object growth, callback return values and preserved registers, both placement return paths, and level-change return values. Four simulated fatal timer failures exited with status 1; initial timer creation failure returned -1 from `WindowProc`. Verification files were kept outside the project. Manual gameplay confirmation is pending.

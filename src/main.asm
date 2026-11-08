@@ -129,6 +129,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .destroy
 .default:
     invoke DefWindowProc, [hwnd], [uMsg], [wParam], [lParam]
+.return:
     ret
 
 .create:
@@ -142,12 +143,11 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals], 0
     test eax, eax
     jz .createFailed
-    xor eax, eax
-    ret
+    jmp .keyHandled
 
 .createFailed:
     mov eax, -1
-    ret
+    jmp .return
 
 .timer:
     cmp [gameOver], 0
@@ -170,7 +170,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     je .keyHandled
     invoke SetTimer, [hwnd], HORIZONTAL_TIMER_ID, HORIZONTAL_INTERVAL, 0
     test eax, eax
-    jz .timerFailed
+    jz start.error
     cmp [horizontalDirection], VK_LEFT
     je .moveLeft
     jmp .moveRight
@@ -230,7 +230,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     or [heldKeys], DOWN_HELD
     invoke SetTimer, [hwnd], SOFT_DROP_TIMER_ID, SOFT_DROP_INTERVAL, 0
     test eax, eax
-    jz .timerFailed
+    jz start.error
     jmp .moveDown
 
 .keyUp:
@@ -266,9 +266,6 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .loseFocus:
     stdcall ResetInput, [hwnd]
     jmp .keyHandled
-
-.timerFailed:
-    invoke ExitProcess, 1
 
 .rotate:
     test [lParam], 40000000h
@@ -325,8 +322,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     dec eax
     invoke SetTimer, [hwnd], GRAVITY_TIMER_ID, [gravityIntervals + eax * 4], 0
     test eax, eax
-    jnz .spawnNext
-    invoke ExitProcess, 1
+    jz start.error
 .spawnNext:
     stdcall SpawnPiece
     stdcall CanPlacePiece, [pieceX], [pieceY]
@@ -340,11 +336,17 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke InvalidateRect, [hwnd], 0, 0
 .keyHandled:
     xor eax, eax
-    ret
+    jmp .return
 
 .backgroundErased:
     mov eax, 1
-    ret
+    jmp .return
+
+.destroy:
+    stdcall ResetInput, [hwnd]
+    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
+    invoke PostQuitMessage, 0
+    jmp .keyHandled
 
 .paint:
     lea eax, [paint]
@@ -521,15 +523,7 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
 .finishPaint:
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
-    xor eax, eax
-    ret
-
-.destroy:
-    stdcall ResetInput, [hwnd]
-    invoke KillTimer, [hwnd], GRAVITY_TIMER_ID
-    invoke PostQuitMessage, 0
-    xor eax, eax
-    ret
+    jmp .keyHandled
 endp
 
 proc StartHorizontalRepeat hwnd, direction
@@ -537,9 +531,7 @@ proc StartHorizontalRepeat hwnd, direction
     mov [horizontalDirection], eax
     invoke SetTimer, [hwnd], HORIZONTAL_TIMER_ID, HORIZONTAL_DELAY, 0
     test eax, eax
-    jnz .done
-    invoke ExitProcess, 1
-.done:
+    jz start.error
     ret
 endp
 
@@ -570,9 +562,10 @@ proc UpdateProgress lines
     je .unchanged
     mov [level], eax
     mov eax, 1
-    ret
+    jmp .done
 .unchanged:
     xor eax, eax
+.done:
     ret
 endp
 
@@ -728,9 +721,10 @@ proc CanPlacePiece uses esi, x, y
     add esi, 2
     loop .checkCell
     mov eax, 1
-    ret
+    jmp .done
 .blocked:
     xor eax, eax
+.done:
     ret
 endp
 
