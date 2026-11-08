@@ -109,7 +109,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, countersText[64]:BYTE, screenDC:DWORD, backBitmap:DWORD, previousBitmap:DWORD
+    local paint:PAINTSTRUCT, countersText[64]:BYTE, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, screenDC:DWORD, backBitmap:DWORD, previousBitmap:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
