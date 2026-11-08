@@ -47,3 +47,15 @@ Hypothesis: replace duplicate procedure epilogues and fatal-error calls with bra
 Result: `.text` shrank **2763 -> 2718 bytes**, saving **45 code bytes**. The executable remains **5120 bytes**. Another 158 code bytes must be removed to reach the next 2560-byte section boundary. Retained as a further code-size reduction.
 
 Validation: the build passed. Temporary checks covered keyboard message sequences, 502 offscreen paint cycles without GDI object growth, callback return values and preserved registers, both placement return paths, and level-change return values. Four simulated fatal timer failures exited with status 1; initial timer creation failure returned -1 from `WindowProc`. Verification files were kept outside the project. Manual gameplay confirmation is pending.
+
+## Experiment 4: Simplify board rendering
+
+Hypothesis: replace individually drawn grid lines and allocated colored brushes with a grid-colored board background, inset cell fills, and the stock DC brush. Share coordinate calculation between locked and active cells in `DrawCell`. Keep double buffering and the existing visible colors and one-pixel borders.
+
+This experiment starts after the elapsed-time correction: `.text` is 2824 bytes and the executable is 5120 bytes. The board background extends through the right and bottom grid borders; each cell fills only its 35-by-35-pixel interior. Palette entry zero now contains the empty-cell color. The stock brush color changes through `SetDCBrushColor`; the stock object is never deleted.
+
+Result: `.text` shrank **2824 -> 2645 bytes**, saving **179 code bytes**. The import section shrank **918 -> 858 bytes**, saving **60 bytes** by replacing four imports with one. The `WindowProc` local frame shrank from 232 to 180 bytes. The executable remains **5120 bytes** due to section alignment; another 85 code bytes must be removed to reach the next 2560-byte section boundary. Retained as a reduction in code and import contents.
+
+Validation: the build passed. A temporary harness compared every RGB pixel of 504 full 532-by-800 frames rendered by the old and new procedures. All seven shapes and four rotations, three positions, empty/sparse/dense boards, counters, and game-over text were covered; no pixel differed. GDI object counts were stable after warm-up. All 34 elapsed-time regression scenarios also passed, and gameplay helper source is unchanged. Verification files were kept outside the project. Manual gameplay confirmation is pending.
+
+Tradeoff: all 200 cells are filled on each paint, including empty cells. In one local offscreen benchmark, 1000 empty-board frames took 766 ms before and 953 ms after the change, approximately 0.19 ms more per frame. These timings describe that benchmark rather than a guaranteed on-screen frame rate.

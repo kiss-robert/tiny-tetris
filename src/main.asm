@@ -22,12 +22,13 @@ RIGHT_HELD = 2
 DOWN_HELD = 4
 LINES_PER_LEVEL = 10
 MAX_LEVEL = 10
+DC_BRUSH = 18
 
 section '.data' data readable writeable
     windowTitle db 'TinyTetris', 0
     className db 'TinyTetrisWindow', 0
     windowClass WNDCLASS 0, WindowProc, 0, 0, 0, 0, 0, 0, 0, className
-    boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT, BOARD_BOTTOM
+    boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT + 1, BOARD_BOTTOM + 1
     pieceX dd 4
     pieceType dd 1
     bagIndex dd 7
@@ -59,7 +60,7 @@ section '.data' data readable writeable
                 db 2,2, 1,0, 1,1, 1,2
                 db 0,2, 2,1, 1,1, 0,1
                 db 0,0, 1,2, 1,1, 1,0
-    pieceColors dd 0, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
+    pieceColors dd 202020h, 0FFFF00h, 00D7FFh, 0D050B0h, 40C040h, 4040E0h, 0E07040h, 0080FFh
     level dd 1
     gravityIntervals dd 1000, 793, 618, 473, 355, 262, 190, 135, 94, 64
     lineScores dd 0, 100, 300, 500, 800
@@ -112,7 +113,7 @@ start:
     invoke ExitProcess, 1
 
 proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
-    local paint:PAINTSTRUCT, countersText[64]:BYTE, clientRect:RECT, pieceRect:RECT, textRect:RECT, previousPen:DWORD, previousFont:DWORD, pieceBrushes[8]:DWORD, shapeEnd:DWORD, screenDC:DWORD, backBitmap:DWORD, previousBitmap:DWORD
+    local paint:PAINTSTRUCT, countersText[64]:BYTE, clientRect:RECT, textRect:RECT, previousFont:DWORD, shapeEnd:DWORD, screenDC:DWORD, backBitmap:DWORD, previousBitmap:DWORD
 
     cmp [uMsg], WM_CREATE
     je .create
@@ -344,111 +345,41 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke DeleteDC, ebx
     mov ebx, [screenDC]
 .drawScene:
-    invoke CreateSolidBrush, 121212h
+    invoke GetStockObject, DC_BRUSH
     mov esi, eax
+    invoke SetDCBrushColor, ebx, 121212h
     lea eax, [clientRect]
     invoke FillRect, ebx, eax, esi
-    invoke DeleteObject, esi
 
-    invoke CreateSolidBrush, 202020h
-    mov esi, eax
+    invoke SetDCBrushColor, ebx, 383838h
     invoke FillRect, ebx, boardRect, esi
-    invoke DeleteObject, esi
-
-    mov edi, 1
-.createPieceBrushes:
-    invoke CreateSolidBrush, [pieceColors + edi * 4]
-    mov [pieceBrushes + edi * 4], eax
-    inc edi
-    cmp edi, 7
-    jbe .createPieceBrushes
     xor edi, edi
 .boardCells:
     movzx eax, byte [board + edi]
-    test eax, eax
-    je .nextCell
-    mov esi, [pieceBrushes + eax * 4]
-    mov eax, edi
-    xor edx, edx
-    mov ecx, BOARD_COLUMNS
-    div ecx
-    imul eax, CELL_SIZE
-    add eax, BOARD_TOP
-    mov [pieceRect.top], eax
-    add eax, CELL_SIZE
-    mov [pieceRect.bottom], eax
-    imul edx, CELL_SIZE
-    add edx, BOARD_LEFT
-    mov [pieceRect.left], edx
-    add edx, CELL_SIZE
-    mov [pieceRect.right], edx
-    lea eax, [pieceRect]
-    invoke FillRect, ebx, eax, esi
-.nextCell:
+    stdcall DrawCell, ebx, esi, edi, [pieceColors + eax * 4]
     inc edi
     cmp edi, BOARD_COLUMNS * BOARD_ROWS
     jb .boardCells
 
     cmp [gameOver], 0
     jne .finishPieces
-    mov eax, [pieceType]
-    mov esi, [pieceBrushes + eax * 4]
     stdcall GetPieceShape
     mov edi, eax
     add eax, 8
     mov [shapeEnd], eax
 .activeCells:
-    movzx eax, byte [edi]
-    add eax, [pieceX]
-    imul eax, CELL_SIZE
-    add eax, BOARD_LEFT
-    mov [pieceRect.left], eax
-    add eax, CELL_SIZE
-    mov [pieceRect.right], eax
     movzx eax, byte [edi + 1]
     add eax, [pieceY]
-    imul eax, CELL_SIZE
-    add eax, BOARD_TOP
-    mov [pieceRect.top], eax
-    add eax, CELL_SIZE
-    mov [pieceRect.bottom], eax
-
-    lea eax, [pieceRect]
-    invoke FillRect, ebx, eax, esi
+    imul eax, BOARD_COLUMNS
+    movzx edx, byte [edi]
+    add eax, edx
+    add eax, [pieceX]
+    mov edx, [pieceType]
+    stdcall DrawCell, ebx, esi, eax, [pieceColors + edx * 4]
     add edi, 2
     cmp edi, [shapeEnd]
     jb .activeCells
 .finishPieces:
-    mov edi, 1
-.deletePieceBrushes:
-    invoke DeleteObject, [pieceBrushes + edi * 4]
-    inc edi
-    cmp edi, 7
-    jbe .deletePieceBrushes
-
-    invoke CreatePen, PS_SOLID, 1, 383838h
-    mov esi, eax
-    invoke SelectObject, ebx, esi
-    mov [previousPen], eax
-
-    mov edi, BOARD_LEFT
-.verticalLines:
-    invoke MoveToEx, ebx, edi, BOARD_TOP, 0
-    invoke LineTo, ebx, edi, BOARD_BOTTOM + 1
-    add edi, CELL_SIZE
-    cmp edi, BOARD_RIGHT
-    jbe .verticalLines
-
-    mov edi, BOARD_TOP
-.horizontalLines:
-    invoke MoveToEx, ebx, BOARD_LEFT, edi, 0
-    invoke LineTo, ebx, BOARD_RIGHT + 1, edi
-    add edi, CELL_SIZE
-    cmp edi, BOARD_BOTTOM
-    jbe .horizontalLines
-
-    invoke SelectObject, ebx, [previousPen]
-    invoke DeleteObject, esi
     invoke GetStockObject, DEFAULT_GUI_FONT
     invoke SelectObject, ebx, eax
     mov [previousFont], eax
@@ -489,6 +420,29 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
     jmp .keyHandled
+endp
+
+proc DrawCell hdc, brush, cellIndex, color
+    local cellRect:RECT
+
+    mov eax, [cellIndex]
+    xor edx, edx
+    mov ecx, BOARD_COLUMNS
+    div ecx
+    imul eax, CELL_SIZE
+    add eax, BOARD_TOP + 1
+    mov [cellRect.top], eax
+    add eax, CELL_SIZE - 1
+    mov [cellRect.bottom], eax
+    imul edx, CELL_SIZE
+    add edx, BOARD_LEFT + 1
+    mov [cellRect.left], edx
+    add edx, CELL_SIZE - 1
+    mov [cellRect.right], edx
+    invoke SetDCBrushColor, [hdc], [color]
+    lea eax, [cellRect]
+    invoke FillRect, [hdc], eax, [brush]
+    ret
 endp
 
 proc AdvanceGameTime uses ebx esi, hwnd
@@ -767,4 +721,4 @@ section '.idata' import data readable writeable
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA', GetTickCount, 'GetTickCount'
     import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA', wsprintf, 'wsprintfA'
-    import gdi32, CreateSolidBrush, 'CreateSolidBrush', CreatePen, 'CreatePen', SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', MoveToEx, 'MoveToEx', LineTo, 'LineTo', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor', CreateCompatibleDC, 'CreateCompatibleDC', CreateCompatibleBitmap, 'CreateCompatibleBitmap', BitBlt, 'BitBlt', DeleteDC, 'DeleteDC'
+    import gdi32, SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor', CreateCompatibleDC, 'CreateCompatibleDC', CreateCompatibleBitmap, 'CreateCompatibleBitmap', BitBlt, 'BitBlt', DeleteDC, 'DeleteDC', SetDCBrushColor, 'SetDCBrushColor'
