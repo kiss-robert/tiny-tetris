@@ -1,19 +1,20 @@
 # TinyTetris
 
-A personal experiment in AI-assisted software engineering: build a minimal, playable native Windows Tetris in x86 Assembly, then explore code optimizations to make the resulting binary as small as possible.
+A small native Windows block-stacking game written in x86 Assembly as an experiment in AI-assisted software engineering.
 
 The implementation is generated using AI tools. The project owner guides decisions, reviews changes, and tests behavior.
 
 ## Current status
 
-TinyTetris is playable. The current executable is **4608 bytes (4.5 KiB)**, built with FASM 1.73.35.
+TinyTetris is playable on Windows.
 
 - A 10-by-20 board with all seven classic tetrominoes, colors, and shuffled seven-piece bags.
 - Movement, clockwise rotation, automatic falling, collision detection, and completed-line clearing.
 - Score, line, and level counters; ten progressively faster levels, advancing every ten cleared lines.
+- A bold, white-and-cyan TinyTetris logo above the counters, rendered with the same Windows typeface at a larger size.
 - Game over and restart, with double-buffered graphics for flicker-free drawing.
 
-The game continues at level 10 until game over. Size optimization is underway; the experiments and measurements are recorded in [the optimization log](docs/optimization.md).
+The game continues at level 10 until game over.
 
 ## Requirements
 
@@ -25,7 +26,7 @@ The instructions below use a Windows 10 or 11 PC with 64-bit Windows. The game i
 | Flat Assembler (FASM) | Turns the Assembly source into the playable `.exe` file. Download the **flat assembler for Windows** package, including its `INCLUDE` folder. | [Download FASM](https://flatassembler.net/download.php) |
 | FASM extension by tpxhorus (optional) | Adds syntax highlighting when viewing the Assembly source in VS Code. | [Install the FASM extension](https://marketplace.visualstudio.com/items?itemName=tpxhorus.fasm) |
 
-The recorded executable sizes were measured with **FASM 1.73.35**. The optional VS Code extension provides highlighting; the separate FASM download provides the assembler used to build the game.
+The game was built with **FASM 1.73.35**. The optional VS Code extension provides highlighting. The separate FASM download provides the assembler used to build the game.
 
 ## Build and run
 
@@ -78,7 +79,7 @@ Building means turning the source files into a program Windows can run.
 
 1. In File Explorer, open the extracted project folder. Create a folder named `build` next to `src` and `README.md` if it is not already there. To create it, right-click an empty area and choose **New > Folder**.
 2. Return to VS Code and press `Ctrl+Shift+B`. You can also choose **Terminal > Run Build Task**.
-3. Wait for the task to finish. The terminal panel at the bottom shows FASM's output, including the executable size on a successful build.
+3. Wait for the task to finish. The terminal panel at the bottom shows the build result.
 4. The finished game is now at `build\TinyTetris.exe` inside the project folder.
 
 The `build` folder is excluded from the repository, which is why you may need to create it after downloading the project.
@@ -116,15 +117,6 @@ Click the game window to give it keyboard focus.
 
 Elapsed game time continues during window interactions, including minimization. If Windows delays processing, the game catches up afterward, potentially reaching game over.
 
-## Executable size milestones
+## Development notes
 
-These are measured file sizes using FASM 1.73.35.
-
-| Milestone | Executable size |
-| --- | ---: |
-| Initial Hello MessageBox | 2048 bytes (2 KiB) |
-| Playable baseline before size optimization | 5632 bytes (5.5 KiB) |
-| Zero-initialized data optimization | 5120 bytes (5 KiB) |
-| Current optimized game | **4608 bytes (4.5 KiB)** |
-
-The current game is 1024 bytes smaller than the playable baseline, a reduction of approximately 18.2%. Optimization targets the actual executable size while preserving functionality and Windows compatibility. No executable packer is used. See [the optimization log](docs/optimization.md) for the individual experiments and validation results.
+The [optimization log](docs/optimization.md) records earlier experiments and how they were verified.

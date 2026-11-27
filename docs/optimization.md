@@ -69,3 +69,9 @@ Small register constants use balanced `push`/`pop` pairs where shorter than `mov
 Result: `.text` shrank **2645 -> 2552 bytes**, saving **93 code bytes**. Its file allocation fell from 3072 to 2560 bytes, reducing the executable **5120 -> 4608 bytes**, a **512-byte (10%)** saving. Eight code bytes remain before the section would exceed that boundary again.
 
 Validation: the build passed. Temporary checks passed 504 full-frame RGB comparisons, 34 elapsed-time scenarios, 28224 placement/rotation scenarios, 40000 seven-piece bags with 24 partial-bag resets, and score/level checks at 10-, 100-, and 1000-line thresholds. All 256 high-byte key-flag combinations were checked for movement, rotation, and restart. Verification files were kept outside the project. Manual gameplay confirmation is pending.
+
+## TinyTetris logo
+
+The sidebar displays a bold TinyTetris logo above the counters. Windows renders the white “Tiny” and cyan “Tetris” using a larger version of the counters’ typeface. The renderer measures both parts to position the logo and reuses the window caption string.
+
+Offscreen rendering checks covered normal and game-over states during development. GDI object counts remained stable over 200 repeated paints after warm-up. The project owner confirmed the final placement.
