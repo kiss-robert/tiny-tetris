@@ -23,9 +23,17 @@ DOWN_HELD = 4
 LINES_PER_LEVEL = 10
 MAX_LEVEL = 10
 DC_BRUSH = 18
+TITLE_TOP = BOARD_TOP + 2
+TITLE_FONT_HEIGHT = 24
+TITLE_BOTTOM = BOARD_TOP + 42
+COUNTERS_TOP = TITLE_BOTTOM + 12
+GAME_OVER_TOP = BOARD_TOP + 226
 
 section '.data' data readable writeable
-    windowTitle db 'TinyTetris', 0
+    windowTitle db 'Tiny'
+    titleSuffix db 'Tetris', 0
+    TITLE_PREFIX_LENGTH = titleSuffix - windowTitle
+    TITLE_SUFFIX_LENGTH = $ - titleSuffix - 1
     className db 'TinyTetrisWindow', 0
     windowClass WNDCLASS 0, WindowProc, 0, 0, 0, 0, 0, 0, 0, className
     boardRect RECT BOARD_LEFT, BOARD_TOP, BOARD_RIGHT + 1, BOARD_BOTTOM + 1
@@ -381,13 +389,14 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke SelectObject, ebx, eax
     mov [previousFont], eax
     invoke SetBkMode, ebx, TRANSPARENT
+    stdcall DrawTitle, ebx, [clientRect.right]
     invoke SetTextColor, ebx, 0E0E0E0h
     mov [textRect.left], BOARD_RIGHT + 12
     mov eax, [clientRect.right]
     sub eax, 12
     mov [textRect.right], eax
-    mov [textRect.top], BOARD_TOP
-    mov [textRect.bottom], BOARD_TOP + 160
+    mov [textRect.top], COUNTERS_TOP
+    mov [textRect.bottom], COUNTERS_TOP + 160
     lea eax, [textRect]
     invoke DrawText, ebx, countersLabels, -1, eax, DT_LEFT or DT_NOPREFIX
     lea eax, [countersText]
@@ -397,12 +406,12 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     invoke DrawText, ebx, edx, -1, eax, DT_RIGHT or DT_NOPREFIX
     cmp [gameOver], 0
     je .restoreFont
-    mov [textRect.top], BOARD_TOP + 190
-    mov [textRect.bottom], BOARD_TOP + 230
+    mov [textRect.top], GAME_OVER_TOP
+    mov [textRect.bottom], GAME_OVER_TOP + 40
     lea eax, [textRect]
     invoke DrawText, ebx, gameOverText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
-    mov [textRect.top], BOARD_TOP + 238
-    mov [textRect.bottom], BOARD_TOP + 310
+    mov [textRect.top], GAME_OVER_TOP + 48
+    mov [textRect.bottom], GAME_OVER_TOP + 120
     lea eax, [textRect]
     invoke DrawText, ebx, restartText, -1, eax, DT_CENTER or DT_WORDBREAK or DT_NOPREFIX
 .restoreFont:
@@ -417,6 +426,66 @@ proc WindowProc uses ebx esi edi, hwnd, uMsg, wParam, lParam
     lea eax, [paint]
     invoke EndPaint, [hwnd], eax
     jmp .keyHandled
+endp
+
+proc DrawTitle uses ebx esi, hdc, clientRight
+    local fontSpec:LOGFONT, previousFont:DWORD, textSize:SIZE, titleRect:RECT
+
+    xor ebx, ebx
+    invoke GetStockObject, DEFAULT_GUI_FONT
+    lea edx, [fontSpec]
+    invoke GetObject, eax, sizeof.LOGFONT, edx
+    test eax, eax
+    jz .measure
+    mov [fontSpec.lfHeight], -TITLE_FONT_HEIGHT
+    and [fontSpec.lfWidth], 0
+    mov [fontSpec.lfWeight], FW_BOLD
+    lea eax, [fontSpec]
+    invoke CreateFontIndirect, eax
+    test eax, eax
+    jz .measure
+    mov ebx, eax
+    invoke SelectObject, [hdc], ebx
+    mov [previousFont], eax
+.measure:
+    lea eax, [textSize]
+    invoke GetTextExtentPoint32, [hdc], windowTitle, TITLE_PREFIX_LENGTH, eax
+    test eax, eax
+    jz .restore
+    mov esi, [textSize.cx]
+    lea eax, [textSize]
+    invoke GetTextExtentPoint32, [hdc], titleSuffix, TITLE_SUFFIX_LENGTH, eax
+    test eax, eax
+    jz .restore
+    mov eax, [clientRight]
+    add eax, BOARD_RIGHT
+    sub eax, esi
+    sub eax, [textSize.cx]
+    sar eax, 1
+    sub eax, 2
+    mov [titleRect.left], eax
+    mov eax, [clientRight]
+    sub eax, 12
+    mov [titleRect.right], eax
+    mov [titleRect.top], TITLE_TOP
+    mov [titleRect.bottom], TITLE_BOTTOM
+    invoke SetTextColor, [hdc], 0E0E0E0h
+    lea eax, [titleRect]
+    invoke DrawText, [hdc], windowTitle, TITLE_PREFIX_LENGTH, eax, DT_SINGLELINE or DT_NOPREFIX
+    add [titleRect.left], esi
+    invoke SetTextColor, [hdc], 0FFFF00h
+    lea eax, [titleRect]
+    invoke DrawText, [hdc], titleSuffix, TITLE_SUFFIX_LENGTH, eax, DT_SINGLELINE or DT_NOPREFIX
+.restore:
+    test ebx, ebx
+    jz .done
+    cmp [previousFont], 0
+    je .deleteFont
+    invoke SelectObject, [hdc], [previousFont]
+.deleteFont:
+    invoke DeleteObject, ebx
+.done:
+    ret
 endp
 
 proc DrawCell hdc, brush, cellIndex, color
@@ -726,4 +795,4 @@ section '.idata' import data readable writeable
 
     import kernel32, ExitProcess, 'ExitProcess', GetModuleHandle, 'GetModuleHandleA', GetTickCount, 'GetTickCount'
     import user32, RegisterClass, 'RegisterClassA', CreateWindowEx, 'CreateWindowExA', LoadCursor, 'LoadCursorA', GetMessage, 'GetMessageA', TranslateMessage, 'TranslateMessage', DispatchMessage, 'DispatchMessageA', DefWindowProc, 'DefWindowProcA', PostQuitMessage, 'PostQuitMessage', BeginPaint, 'BeginPaint', EndPaint, 'EndPaint', GetClientRect, 'GetClientRect', FillRect, 'FillRect', InvalidateRect, 'InvalidateRect', SetTimer, 'SetTimer', KillTimer, 'KillTimer', DrawText, 'DrawTextA', wsprintf, 'wsprintfA'
-    import gdi32, SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor', CreateCompatibleDC, 'CreateCompatibleDC', CreateCompatibleBitmap, 'CreateCompatibleBitmap', BitBlt, 'BitBlt', DeleteDC, 'DeleteDC', SetDCBrushColor, 'SetDCBrushColor'
+    import gdi32, SelectObject, 'SelectObject', DeleteObject, 'DeleteObject', GetStockObject, 'GetStockObject', SetBkMode, 'SetBkMode', SetTextColor, 'SetTextColor', CreateCompatibleDC, 'CreateCompatibleDC', CreateCompatibleBitmap, 'CreateCompatibleBitmap', BitBlt, 'BitBlt', DeleteDC, 'DeleteDC', SetDCBrushColor, 'SetDCBrushColor', GetObject, 'GetObjectA', CreateFontIndirect, 'CreateFontIndirectA', GetTextExtentPoint32, 'GetTextExtentPoint32A'
